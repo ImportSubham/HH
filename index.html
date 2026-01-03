@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base target="_self">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HygieneHub </title>
+    <meta name="description" content="Rate and review food stall hygiene. Find the cleanest food stalls in your area.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        * {
+            font-family: 'Poppins', sans-serif;
+        }
+        .rating-star {
+            color: #ffc107;
+        }
+        .rating-star-empty {
+            color: #e4e5e9;
+        }
+        .progress-bar {
+            height: 8px;
+            border-radius: 4px;
+            background-color: #e5e7eb;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .hygiene-excellent { background-color: #10b981; }
+        .hygiene-good { background-color: #3b26fa; }
+        .hygiene-fair { background-color: #f59e0b; }
+        .hygiene-poor { background-color: #ef4444; }
+        .hygiene-very-poor { background-color: #7c2d12; }
+        
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-content {
+            background-color: rgb(241, 234, 234);
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            animation: modalFadeIn 0.3s;
+        }
+        
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .tab-button {
+            padding: 12px 24px;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab-button.active {
+            border-bottom-color: #3b82f6;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        
+        .qr-code-container {
+            background: rgb(249, 250, 249);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50">
+    <!-- Navigation -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <nav class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <div class="bg-blue-600 text-white p-2 rounded-lg">
+                        <i class="fas fa-utensils text-xl"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-800">Hygiene<span class="text-blue-600">Hub</span></h1>
+                </div>
+                
+                <div class="hidden md:flex space-x-8">
+                    <a href="#" class="text-gray-700 hover:text-blue-600 font-medium" onclick="showSection('home')">Home</a>
+                    <a href="#" class="text-gray-700 hover:text-blue-600 font-medium" onclick="showSection('leaderboard')">Leaderboard</a>
+                    <a href="#" class="text-gray-700 hover:text-blue-600 font-medium" onclick="showSection('add-stall')">Add Stall</a>
+                    <a href="#" class="text-gray-700 hover:text-blue-600 font-medium" onclick="showSection('search')">Search</a>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <div id="user-info" class="hidden">
+                        <span id="user-email" class="text-gray-700 mr-4"></span>
+                        <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium">
+                            Logout
+                        </button>
+                    </div>
+                    <div id="auth-buttons">
+                        <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">
+                            Login
+                        </button>
+                        <button id="register-btn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium ml-2">
+                            Register
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+        <!-- Home Section -->
+        <section id="home" class="section">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl font-bold text-gray-800 mb-4">Find the Cleanest Food Stalls Near You</h2>
+                <p class="text-gray-600 text-lg max-w-3xl mx-auto">Rate food stalls based on hygiene factors like water quality, mask usage, gloves, and cleanliness. Help others make informed decisions about where to eat.</p>
+            </div>
+            
+            <!-- Search Bar -->
+            <div class="max-w-2xl mx-auto mb-12">
+                <div class="relative">
+                    <input type="text" id="search-input" placeholder="Search by city or area name..." class="w-full p-4 pl-12 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm">
+                    <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <button id="search-btn" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium">
+                        Search
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Featured Stalls -->
+            <div class="mb-12">
+                <h3 class="text-2xl font-bold text-gray-800 mb-6">Top Rated Stalls</h3>
+                <div id="featured-stalls" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Featured stalls will be loaded here -->
+                </div>
+            </div>
+            
+            <!-- How It Works -->
+            <div class="bg-white rounded-2xl shadow-lg p-8 mb-12">
+                <h3 class="text-2xl font-bold text-gray-800 mb-8 text-center">How It Works</h3>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                    <div class="text-center">
+                        <div class="bg-blue-100 text-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-search text-2xl"></i>
+                        </div>
+                        <h4 class="font-bold text-gray-800 mb-2">Search</h4>
+                        <p class="text-gray-600">Find food stalls in your area by city or locality name.</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="bg-green-100 text-green-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-star text-2xl"></i>
+                        </div>
+                        <h4 class="font-bold text-gray-800 mb-2">Rate</h4>
+                        <p class="text-gray-600">Rate stalls based on water quality, masks, gloves, and cleanliness.</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="bg-purple-100 text-purple-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-trophy text-2xl"></i>
+                        </div>
+                        <h4 class="font-bold text-gray-800 mb-2">Leaderboard</h4>
+                        <p class="text-gray-600">See which stalls have the highest hygiene scores in your area.</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="bg-yellow-100 text-yellow-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-qrcode text-2xl"></i>
+                        </div>
+                        <h4 class="font-bold text-gray-800 mb-2">QR Code</h4>
+                        <p class="text-gray-600">Stall owners can generate QR codes to display their hygiene score.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Leaderboard Section -->
+        <section id="leaderboard" class="section hidden">
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">Hygiene Leaderboard</h2>
+                <p class="text-gray-600">Top rated food stalls based on hygiene scores</p>
+            </div>
+            
+            <div class="flex mb-6 border-b">
+                <button class="tab-button active" onclick="changeLeaderboardCity('all')">All Cities</button>
+                <button class="tab-button" onclick="changeLeaderboardCity('new-york')">Kolkata</button>
+                <button class="tab-button" onclick="changeLeaderboardCity('los-angeles')">Delhi</button>
+                <button class="tab-button" onclick="changeLeaderboardCity('chicago')">Mumbai</button>
+                <button class="tab-button" onclick="changeLeaderboardCity('miami')">Bangalore</button>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stall Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hygiene Score</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Factors</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reviews</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Leaderboard rows will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Add Stall Section -->
+        <section id="add-stall" class="section hidden">
+            <div class="max-w-4xl mx-auto">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-2">Add a New Food Stall</h2>
+                    <p class="text-gray-600">Help others discover clean food stalls by adding new ones to our database.</p>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-lg p-8">
+                    <form id="add-stall-form">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2" for="stall-name">Stall Name *</label>
+                                <input type="text" id="stall-name" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2" for="stall-type">Cuisine Type *</label>
+                                <select id="stall-type" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Select cuisine type</option>
+                                    <option value="street-food">Street Food</option>
+                                    <option value="indian">Indian</option>
+                                    <option value="chinese">Chinese</option>
+                                    <option value="mexican">Mexican</option>
+                                    <option value="italian">Italian</option>
+                                    <option value="american">American</option>
+                                    <option value="vegetarian">Vegetarian</option>
+                                    <option value="vegan">Vegan</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2" for="stall-city">City *</label>
+                                <input type="text" id="stall-city" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-medium mb-2" for="stall-area">Area/Locality *</label>
+                                <input type="text" id="stall-area" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="block text-gray-700 font-medium mb-2" for="stall-description">Description</label>
+                            <textarea id="stall-description" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Describe the stall, popular dishes, etc."></textarea>
+                        </div>
+                        
+                        <div class="mb-8">
+                            <h3 class="text-xl font-bold text-gray-800 mb-4">Initial Hygiene Rating</h3>
+                            <p class="text-gray-600 mb-6">Rate this stall based on the following hygiene factors (1 = Poor, 5 = Excellent)</p>
+                            
+                            <div class="space-y-6">
+                                <div>
+                                    <div class="flex justify-between mb-2">
+                                        <label class="text-gray-700 font-medium">Water Quality</label>
+                                        <span id="water-quality-value" class="text-blue-600 font-medium">3</span>
+                                    </div>
+                                    <input type="range" id="water-quality" min="1" max="5" value="3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Poor</span>
+                                        <span>Fair</span>
+                                        <span>Good</span>
+                                        <span>Very Good</span>
+                                        <span>Excellent</span>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div class="flex justify-between mb-2">
+                                        <label class="text-gray-700 font-medium">Mask Usage</label>
+                                        <span id="mask-usage-value" class="text-blue-600 font-medium">3</span>
+                                    </div>
+                                    <input type="range" id="mask-usage" min="1" max="5" value="3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Poor</span>
+                                        <span>Fair</span>
+                                        <span>Good</span>
+                                        <span>Very Good</span>
+                                        <span>Excellent</span>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div class="flex justify-between mb-2">
+                                        <label class="text-gray-700 font-medium">Glove Usage</label>
+                                        <span id="glove-usage-value" class="text-blue-600 font-medium">3</span>
+                                    </div>
+                                    <input type="range" id="glove-usage" min="1" max="5" value="3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Poor</span>
+                                        <span>Fair</span>
+                                        <span>Good</span>
+                                        <span>Very Good</span>
+                                        <span>Excellent</span>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div class="flex justify-between mb-2">
+                                        <label class="text-gray-700 font-medium">Cleanliness</label>
+                                        <span id="cleanliness-value" class="text-blue-600 font-medium">3</span>
+                                    </div>
+                                    <input type="range" id="cleanliness" min="1" max="5" value="3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Poor</span>
+                                        <span>Fair</span>
+                                        <span>Good</span>
+                                        <span>Very Good</span>
+                                        <span>Excellent</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="block text-gray-700 font-medium mb-2" for="stall-photo">Upload Stall Photo</label>
+                            <input type="file" id="stall-photo" accept="image/*" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="text-gray-500 text-sm mt-1">Upload a clear photo of the food stall (optional)</p>
+                        </div>
+                        
+                        <div class="flex justify-end">
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium text-lg">
+                                Add Stall
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Search Results Section -->
+        <section id="search" class="section hidden">
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">Search Results</h2>
+                <p id="search-results-info" class="text-gray-600">Search for food stalls by city or area name</p>
+            </div>
+            
+            <div id="search-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Search results will be loaded here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white mt-12">
+        <div class="container mx-auto px-4 py-12">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <div class="bg-blue-600 text-white p-2 rounded-lg">
+                            <i class="fas fa-utensils"></i>
+                        </div>
+                        <h3 class="text-xl font-bold">Hygiene<span class="text-blue-400">Hub</span></h3>
+                    </div>
+                    <p class="text-gray-400">Helping you find the cleanest food stalls in your area. Rate, review, and discover hygienic food options.</p>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-4">Quick Links</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-gray-400 hover:text-white" onclick="showSection('home')">Home</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white" onclick="showSection('leaderboard')">Leaderboard</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white" onclick="showSection('add-stall')">Add Stall</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white" onclick="showSection('search')">Search</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-4">Hygiene Factors</h4>
+                    <ul class="space-y-2">
+                        <li class="text-gray-400">Water Quality</li>
+                        <li class="text-gray-400">Mask Usage</li>
+                        <li class="text-gray-400">Glove Usage</li>
+                        <li class="text-gray-400">Cleanliness</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-4">Contact Us</h4>
+                    <p class="text-gray-400 mb-2"><i class="fas fa-envelope mr-2"></i> support@hygienehub.com</p>
+                    <p class="text-gray-400 mb-2"><i class="fas fa-phone mr-2"></i> +1234567890</p>
+                    <div class="flex space-x-4 mt-4">
+                        <a href="#" class="text-gray-400 hover:text-white"><i class="fab fa-facebook-f"></i></a>
+                        <a href="#" class="text-gray-400 hover:text-white"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="text-gray-400 hover:text-white"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
+                <p>&copy; 2026 HygieneHub. All rights reserved. | <a href="#" class="hover:text-white">Privacy Policy</a> | <a href="#" class="hover:text-white">Terms of Service</a></p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-800">Login to Your Account</h3>
+                    <button onclick="closeModal('login-modal')" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <form id="login-form">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-medium mb-2" for="login-email">Email Address</label>
+                        <input type="email" id="login-email" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block text-gray-700 font-medium mb-2" for="login-password">Password</label>
+                        <input type="password" id="login-password" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div class="mb-6">
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-medium">
+                            Login
+                        </button>
+                    </div>
+                    
+                    <div class="text-center">
+                        <p class="text-gray-600">Don't have an account? <button type="button" onclick="showRegisterModal()" class="text-blue-600 hover:text-blue-800 font-medium">Register here</button></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Register Modal -->
+    <div id="register-modal" class="modal">
+        <div class="modal-content">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-800">Create an Account</h3>
+                    <button onclick="closeModal('register-modal')" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <form id="register-form">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-medium mb-2" for="register-name">Full Name</label>
+                        <input type="text" id="register-name" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-medium mb-2" for="register-email">Email Address</label>
+                        <input type="email" id="register-email" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block text-gray-700 font-medium mb-2" for="register-password">Password</label>
+                        <input type="password" id="register-password" required minlength="6" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-gray-500 text-sm mt-1">Password must be at least 6 characters long</p>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded-lg font-medium">
+                            Create Account
+                        </button>
+                    </div>
+                    
+                    <div class="text-center">
+                        <p class="text-gray-600">Already have an account? <button type="button" onclick="showLoginModal()" class="text-blue-600 hover:text-blue-800 font-medium">Login here</button></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Stall Details Modal -->
+    <div id="stall-details-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 id="stall-modal-title" class="text-2xl font-bold text-gray-800">Stall Details</h3>
+                    <button onclick="closeModal('stall-details-modal')" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div id="stall-modal-content">
+                    <!-- Stall details will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- QR Code Modal -->
+    <div id="qr-modal" class="modal">
+        <div class="modal-content">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-800">Hygiene Score QR Code</h3>
+                    <button onclick="closeModal('qr-modal')" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="text-center">
+                    <p class="text-gray-600 mb-6">Stall owners can display this QR code at their stall. Customers can scan it to see the latest hygiene rating.</p>
+                    
+                    <div class="qr-code-container inline-block mb-6">
+                        <div id="qr-code"></div>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <p class="text-gray-700 font-medium mb-2">Hygiene Score: <span id="qr-score" class="text-2xl font-bold text-blue-600">8.5</span>/10</p>
+                        <p id="qr-stall-name" class="text-gray-600">Tasty Tacos</p>
+                        <p id="qr-stall-location" class="text-gray-600">New York, Manhattan</p>
+                    </div>
+                    
+                    <button onclick="downloadQRCode()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium">
+                        <i class="fas fa-download mr-2"></i> Download QR Code
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <script>
+        
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyB5MbVsFWVUalGVA5VPS0-Nkvs9ZSeF5bk",
+            authDomain: "foodhygiene-5dcb4.firebaseapp.com",
+            projectId: "foodhygiene-5dcb4",
+            storageBucket: "foodhygiene-5dcb4.firebasestorage.app",
+            messagingSenderId: "615573792166",
+            appId: "1:615573792166:web:85c2ee0ecc6503f3e61b67"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+        
+        
+        const sampleStalls = [
+            {
+                id: "1",
+                name: "Chennai Fast Food",
+                type: "South Indian",
+                city: "Kolkata",
+                area: "Saltlake Sector 4",
+                description: "Authentic South Indian street food with fresh ingredients.",
+                overallScore: 8.7,
+                waterQuality: 4.5,
+                maskUsage: 4.0,
+                gloveUsage: 4.2,
+                cleanliness: 4.8,
+                totalReviews: 24,
+                photoUrl: "https://lh3.googleusercontent.com/p/AF1QipMZxhf_hkFaewhyTQHM1TkOCtknk85n8DpCUHPx=w426-h240-k-no"
+            },
+            {
+                id: "2",
+                name: "At Box",
+                type: "indian",
+                city: "Kolkata",
+                area: "Bangaon, Kulpi Rd,Sec-B ,Tangra",
+                description: "Delicious Indian street food with a variety of curries.",
+                overallScore: 9.2,
+                waterQuality: 4.8,
+                maskUsage: 4.5,
+                gloveUsage: 4.7,
+                cleanliness: 4.9,
+                totalReviews: 32,
+                photoUrl: "https://lh3.googleusercontent.com/gps-cs-s/AG0ilSxelV7tc9Y9Y5gLxZMZZhFDfAPYaNwa3zUlG0NZO_lod_rJjvZcIF1jJPf4pX-hyH_4h3Um2H5-EjuICqyr7_KU9JXUdpoXGya-L6ALd1Pb5TOfqF4oa0hl7m-rDC5PYed7IcNRymbDM6xN=w408-h243-k-no"
+            },
+            {
+                id: "3",
+                name: "OLIVE Restaurant",
+                type: "Fast Food",
+                city: "Kolkata",
+                area: "RA 302, 105, Nabapally, Sector IV",
+                description: "Freshly made noodles and stir-fry dishes.",
+                overallScore: 7.8,
+                waterQuality: 4.0,
+                maskUsage: 3.5,
+                gloveUsage: 3.8,
+                cleanliness: 4.2,
+                totalReviews: 18,
+                photoUrl: "https://lh3.googleusercontent.com/p/AF1QipNzWQLRWDayofCsvXhYeHkJ83ojzRS2kgo_UVvf=w408-h306-k-no"
+            },
+            {
+                id: "4",
+                name: "The Mama 's Pizza",
+                type: "Italian",
+                city: "Kolkata",
+                area: "Salt Lake, P.O, L.221, South, near Monginis Cake Shop, Sukant Nagar, Sector IV, Bidhannagar",
+                description: "Healthy italian and mexican options.",
+                overallScore: 9.5,
+                waterQuality: 4.9,
+                maskUsage: 4.8,
+                gloveUsage: 4.9,
+                cleanliness: 5.0,
+                totalReviews: 41,
+                photoUrl: "https://lh3.googleusercontent.com/gps-cs-s/AG0ilSyCXUvrs1fTvjAqk1Smuuz4kEaFcmMlUDYwfmuMUpcvUyya_7C6duFRHqt-minHtC2OpQNxHC1l50F40eIYpQXgr_vEJqTcS7UwxjzS90f-O5HwIXBgzXwYnk9MtSGqx-ul-yFV=w408-h541-k-no"
+            },
+            {
+                id: "5",
+                name: "Pizza Street",
+                type: "italian",
+                city: "Kolkata",
+                area: "Saltlake Sector 2",
+                description: "Wood-fired pizza with fresh toppings.",
+                overallScore: 8.1,
+                waterQuality: 4.2,
+                maskUsage: 3.8,
+                gloveUsage: 4.0,
+                cleanliness: 4.3,
+                totalReviews: 22,
+                photoUrl: "https://picsum.photos/400/300?random=5"
+            },
+            {
+                id: "6",
+                name: "Burger Haven",
+                type: "american",
+                city: "Kolkata",
+                area: "Saltlake Sector 5",
+                description: "Gourmet burgers with hand-cut fries.",
+                overallScore: 7.5,
+                waterQuality: 3.8,
+                maskUsage: 3.2,
+                gloveUsage: 3.5,
+                cleanliness: 4.0,
+                totalReviews: 15,
+                photoUrl: "https://picsum.photos/400/300?random=6"
+            }
+        ];
+        
+        const sampleReviews = [
+            {
+                id: "1",
+                stallId: "1",
+                userId: "user1",
+                userName: "Subham Shaw",
+                rating: 4.5,
+                comment: "Great tacos! The staff always wear gloves and masks. Very clean preparation area.",
+                date: "2023-10-15"
+            },
+            {
+                id: "2",
+                stallId: "1",
+                userId: "user2",
+                userName: "Vivek Prasad",
+                rating: 4.0,
+                comment: "Good food but water quality could be better. They use bottled water for drinking though.",
+                date: "2023-10-10"
+            },
+            {
+                id: "3",
+                stallId: "2",
+                userId: "user3",
+                userName: "Sohom Sadhukhan",
+                rating: 5.0,
+                comment: "Excellent hygiene standards! All staff wear masks and gloves. The place is spotless.",
+                date: "2023-10-18"
+            }
+        ];
+        
+        let currentUser = null;
+        let currentStallForQR = null;
+        
+        
+        const loginBtn = document.getElementById('login-btn');
+        const registerBtn = document.getElementById('register-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const userInfo = document.getElementById('user-info');
+        const authButtons = document.getElementById('auth-buttons');
+        const userEmail = document.getElementById('user-email');
+        const searchInput = document.getElementById('search-input');
+        const searchBtn = document.getElementById('search-btn');
+        const featuredStalls = document.getElementById('featured-stalls');
+        const leaderboardBody = document.getElementById('leaderboard-body');
+        const searchResults = document.getElementById('search-results');
+        const searchResultsInfo = document.getElementById('search-results-info');
+        
+    
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                currentUser = user;
+                updateUIForUser(user);
+            } else {
+                currentUser = null;
+                updateUIForGuest();
+            }
+        });
+        
+        // Login function
+        document.getElementById('login-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    closeModal('login-modal');
+                    showNotification('Login successful!', 'success');
+                })
+                .catch((error) => {
+                    showNotification(error.message, 'error');
+                });
+        });
+        
+        // Register function
+        document.getElementById('register-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('register-name').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            
+            auth.createUserWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Save additional user data to Firestore
+                    return db.collection('users').doc(userCredential.user.uid).set({
+                        name: name,
+                        email: email,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                })
+                .then(() => {
+                    closeModal('register-modal');
+                    showNotification('Account created successfully!', 'success');
+                })
+                .catch((error) => {
+                    showNotification(error.message, 'error');
+                });
+        });
+        
+        // Logout function
+        logoutBtn.addEventListener('click', () => {
+            auth.signOut()
+                .then(() => {
+                    showNotification('Logged out successfully', 'success');
+                })
+                .catch((error) => {
+                    showNotification(error.message, 'error');
+                });
+        });
+        
+        
+        function updateUIForUser(user) {
+            userEmail.textContent = user.email;
+            userInfo.classList.remove('hidden');
+            authButtons.classList.add('hidden');
+        }
+        
+        function updateUIForGuest() {
+            userInfo.classList.add('hidden');
+            authButtons.classList.remove('hidden');
+        }
+        
+    
+        function renderFeaturedStalls() {
+            featuredStalls.innerHTML = '';
+            
+            // Sort by score and take top 3
+            const topStalls = [...sampleStalls]
+                .sort((a, b) => b.overallScore - a.overallScore)
+                .slice(0, 3);
+            
+            topStalls.forEach(stall => {
+                const stallCard = createStallCard(stall);
+                featuredStalls.appendChild(stallCard);
+            });
+        }
+        
+        // Create stall card element
+        function createStallCard(stall) {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-xl shadow-lg overflow-hidden card-hover';
+            card.innerHTML = `
+                <div class="relative">
+                    <img src="${stall.photoUrl}" alt="${stall.name}" class="w-full h-48 object-cover" loading="lazy">
+                    <div class="absolute top-4 right-4 bg-white px-3 py-1 rounded-full shadow-md">
+                        <span class="font-bold text-blue-600">${stall.overallScore.toFixed(1)}</span>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-2">
+                        <h4 class="text-xl font-bold text-gray-800">${stall.name}</h4>
+                        <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-sm">${getCuisineType(stall.type)}</span>
+                    </div>
+                    <p class="text-gray-600 mb-4">${stall.description}</p>
+                    <div class="flex items-center text-gray-600 mb-4">
+                        <i class="fas fa-map-marker-alt mr-2"></i>
+                        <span>${stall.area}, ${stall.city}</span>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm font-medium text-gray-700">Hygiene Score</span>
+                            <span class="text-sm font-bold ${getScoreColorClass(stall.overallScore)}">${stall.overallScore.toFixed(1)}/10</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill ${getScoreColorClass(stall.overallScore)}" style="width: ${stall.overallScore * 10}%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <button onclick="viewStallDetails('${stall.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">
+                            View Details
+                        </button>
+                        <button onclick="generateQRCode('${stall.id}')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-medium">
+                            <i class="fas fa-qrcode"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            return card;
+        }
+        
+        // Render leaderboard
+        function renderLeaderboard(city = 'all') {
+            leaderboardBody.innerHTML = '';
+            
+            let filteredStalls = sampleStalls;
+            if (city !== 'all') {
+                filteredStalls = sampleStalls.filter(stall => 
+                    stall.city.toLowerCase().replace(' ', '-') === city
+                );
+            }
+            
+            // Sort by score
+            const sortedStalls = [...filteredStalls].sort((a, b) => b.overallScore - a.overallScore);
+            
+            sortedStalls.forEach((stall, index) => {
+                const row = document.createElement('tr');
+                const rankClass = index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : index === 2 ? 'bg-orange-50' : '';
+                
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap ${rankClass}">
+                        <div class="flex items-center">
+                            <span class="text-lg font-bold ${index < 3 ? 'text-blue-600' : 'text-gray-500'}">${index + 1}</span>
+                            ${index < 3 ? `<i class="fas fa-trophy ml-2 ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : 'text-orange-500'}"></i>` : ''}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap ${rankClass}">
+                        <div class="font-medium text-gray-900">${stall.name}</div>
+                        <div class="text-gray-500">${getCuisineType(stall.type)}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap ${rankClass}">
+                        <div class="text-gray-900">${stall.area}</div>
+                        <div class="text-gray-500">${stall.city}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap ${rankClass}">
+                        <div class="flex items-center">
+                            <span class="text-2xl font-bold ${getScoreColorClass(stall.overallScore)}">${stall.overallScore.toFixed(1)}</span>
+                            <span class="text-gray-500 ml-1">/10</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap ${rankClass}">
+                        <div class="grid grid-cols-2 gap-1">
+                            <div class="text-xs">Water: <span class="font-medium">${stall.waterQuality.toFixed(1)}</span></div>
+                            <div class="text-xs">Masks: <span class="font-medium">${stall.maskUsage.toFixed(1)}</span></div>
+                            <div class="text-xs">Gloves: <span class="font-medium">${stall.gloveUsage.toFixed(1)}</span></div>
+                            <div class="text-xs">Clean: <span class="font-medium">${stall.cleanliness.toFixed(1)}</span></div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap ${rankClass}">
+                        <button onclick="viewStallDetails('${stall.id}')" class="text-blue-600 hover:text-blue-800 font-medium">
+                            ${stall.totalReviews} reviews
+                        </button>
+                    </td>
+                `;
+                leaderboardBody.appendChild(row);
+            });
+        }
+        
+        // Search stalls
+        function searchStalls(query) {
+            if (!query.trim()) {
+                showNotification('Please enter a city or area name to search', 'warning');
+                return;
+            }
+            
+            const normalizedQuery = query.toLowerCase();
+            const results = sampleStalls.filter(stall => 
+                stall.city.toLowerCase().includes(normalizedQuery) || 
+                stall.area.toLowerCase().includes(normalizedQuery) ||
+                stall.name.toLowerCase().includes(normalizedQuery)
+            );
+            
+            showSection('search');
+            searchResultsInfo.textContent = results.length > 0 
+                ? `Found ${results.length} stall(s) for "${query}"`
+                : `No stalls found for "${query}". Try a different search term.`;
+            
+            renderSearchResults(results);
+        }
+        
+        // Render search results
+        function renderSearchResults(stalls) {
+            searchResults.innerHTML = '';
+            
+            if (stalls.length === 0) {
+                searchResults.innerHTML = `
+                    <div class="col-span-3 text-center py-12">
+                        <i class="fas fa-search text-5xl text-gray-300 mb-4"></i>
+                        <h4 class="text-xl font-bold text-gray-700 mb-2">No results found</h4>
+                        <p class="text-gray-600">Try searching for a different city or area name.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            stalls.forEach(stall => {
+                const card = createStallCard(stall);
+                searchResults.appendChild(card);
+            });
+        }
+        
+        // View stall details
+        function viewStallDetails(stallId) {
+            const stall = sampleStalls.find(s => s.id === stallId);
+            if (!stall) return;
+            
+            const reviews = sampleReviews.filter(r => r.stallId === stallId);
+            
+            document.getElementById('stall-modal-title').textContent = stall.name;
+            
+            let reviewsHTML = '';
+            reviews.forEach(review => {
+                reviewsHTML += `
+                    <div class="border-b border-gray-200 pb-4 mb-4">
+                        <div class="flex justify-between mb-2">
+                            <span class="font-medium text-gray-800">${review.userName}</span>
+                            <span class="text-gray-500 text-sm">${review.date}</span>
+                        </div>
+                        <div class="flex items-center mb-2">
+                            ${renderStars(review.rating)}
+                            <span class="ml-2 font-medium text-gray-700">${review.rating.toFixed(1)}</span>
+                        </div>
+                        <p class="text-gray-600">${review.comment}</p>
+                    </div>
+                `;
+            });
+            
+            if (reviews.length === 0) {
+                reviewsHTML = '<p class="text-gray-600 text-center py-4">No reviews yet. Be the first to review this stall!</p>';
+            }
+            
+            document.getElementById('stall-modal-content').innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="md:col-span-2">
+                        <img src="${stall.photoUrl}" alt="${stall.name}" class="w-full h-64 object-cover rounded-lg" loading="lazy">
+                    </div>
+                    <div>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h4 class="font-bold text-gray-800 mb-2">Hygiene Score</h4>
+                            <div class="text-center mb-4">
+                                <span class="text-4xl font-bold ${getScoreColorClass(stall.overallScore)}">${stall.overallScore.toFixed(1)}</span>
+                                <span class="text-gray-500 text-xl">/10</span>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-700">Water Quality</span>
+                                    <span class="font-medium">${stall.waterQuality.toFixed(1)}/5</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-700">Mask Usage</span>
+                                    <span class="font-medium">${stall.maskUsage.toFixed(1)}/5</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-700">Glove Usage</span>
+                                    <span class="font-medium">${stall.gloveUsage.toFixed(1)}/5</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-700">Cleanliness</span>
+                                    <span class="font-medium">${stall.cleanliness.toFixed(1)}/5</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <h4 class="font-bold text-gray-800 mb-2">Description</h4>
+                    <p class="text-gray-600">${stall.description}</p>
+                </div>
+                
+                <div class="mb-6">
+                    <div class="flex items-center text-gray-700">
+                        <i class="fas fa-map-marker-alt mr-2"></i>
+                        <span>${stall.area}, ${stall.city}</span>
+                    </div>
+                    <div class="flex items-center text-gray-700 mt-2">
+                        <i class="fas fa-utensils mr-2"></i>
+                        <span>${getCuisineType(stall.type)} Cuisine</span>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="font-bold text-gray-800">Reviews (${reviews.length})</h4>
+                        ${currentUser ? `
+                            <button onclick="showAddReviewModal('${stall.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">
+                                Add Review
+                            </button>
+                        ` : ''}
+                    </div>
+                    <div class="max-h-64 overflow-y-auto pr-2">
+                        ${reviewsHTML}
+                    </div>
+                </div>
+                
+                <div class="flex justify-between">
+                    <button onclick="generateQRCode('${stall.id}')" class="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-lg font-medium">
+                        <i class="fas fa-qrcode mr-2"></i> Generate QR Code
+                    </button>
+                    <button onclick="closeModal('stall-details-modal')" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-3 rounded-lg font-medium">
+                        Close
+                    </button>
+                </div>
+            `;
+            
+            openModal('stall-details-modal');
+        }
+        
+        
+        document.getElementById('add-stall-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            if (!currentUser) {
+                showNotification('Please login to add a stall', 'warning');
+                showLoginModal();
+                return;
+            }
+            
+            const stallName = document.getElementById('stall-name').value;
+            const stallType = document.getElementById('stall-type').value;
+            const stallCity = document.getElementById('stall-city').value;
+            const stallArea = document.getElementById('stall-area').value;
+            const stallDescription = document.getElementById('stall-description').value;
+            
+            const waterQuality = parseInt(document.getElementById('water-quality').value);
+            const maskUsage = parseInt(document.getElementById('mask-usage').value);
+            const gloveUsage = parseInt(document.getElementById('glove-usage').value);
+            const cleanliness = parseInt(document.getElementById('cleanliness').value);
+            
+            
+            const overallScore = ((waterQuality + maskUsage + gloveUsage + cleanliness) / 4) * 2;
+            
+            
+            showNotification(`"${stallName}" added successfully!`, 'success');
+            
+            
+            document.getElementById('add-stall-form').reset();
+            document.getElementById('water-quality-value').textContent = '3';
+            document.getElementById('mask-usage-value').textContent = '3';
+            document.getElementById('glove-usage-value').textContent = '3';
+            document.getElementById('cleanliness-value').textContent = '3';
+            
+            
+            showSection('home');
+        });
+        
+        
+        function generateQRCode(stallId) {
+            const stall = sampleStalls.find(s => s.id === stallId);
+            if (!stall) return;
+            
+            currentStallForQR = stall;
+            
+            
+            const qrData = JSON.stringify({
+                stallName: stall.name,
+                location: `${stall.area}, ${stall.city}`,
+                hygieneScore: stall.overallScore.toFixed(1),
+                lastUpdated: new Date().toISOString().split('T')[0],
+                url: `https://hygienehub.com/stalls/${stall.id}`
+            });
+            
+            
+            document.getElementById('qr-code').innerHTML = '';
+            
+            
+            QRCode.toCanvas(document.getElementById('qr-code'), qrData, {
+                width: 200,
+                height: 200,
+                margin: 1,
+                color: {
+                    dark: '#000000',
+                    light: '#FFFFFF'
+                }
+            }, function(error) {
+                if (error) {
+                    console.error(error);
+                    showNotification('Failed to generate QR code', 'error');
+                }
+            });
+            
+            // Update QR info
+            document.getElementById('qr-score').textContent = stall.overallScore.toFixed(1);
+            document.getElementById('qr-stall-name').textContent = stall.name;
+            document.getElementById('qr-stall-location').textContent = `${stall.area}, ${stall.city}`;
+            
+            openModal('qr-modal');
+        }
+        
+        function downloadQRCode() {
+            const canvas = document.querySelector('#qr-code canvas');
+            if (!canvas) return;
+            
+            const link = document.createElement('a');
+            link.download = `hygiene-qr-${currentStallForQR.name.replace(/\s+/g, '-').toLowerCase()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            showNotification('QR code downloaded successfully!', 'success');
+        }
+        
+        
+        function getCuisineType(type) {
+            const types = {
+                'street-food': 'Street Food',
+                'indian': 'Indian',
+                'chinese': 'Chinese',
+                'mexican': 'Mexican',
+                'italian': 'Italian',
+                'american': 'American',
+                'vegetarian': 'Vegetarian',
+                'vegan': 'Vegan'
+            };
+            return types[type] || type;
+        }
+        
+        function getScoreColorClass(score) {
+            if (score >= 9) return 'hygiene-excellent';
+            if (score >= 8) return 'hygiene-good';
+            if (score >= 7) return 'hygiene-fair';
+            if (score >= 6) return 'hygiene-poor';
+            return 'hygiene-very-poor';
+        }
+        
+        function renderStars(rating) {
+            let stars = '';
+            const fullStars = Math.floor(rating);
+            const hasHalfStar = rating % 1 >= 0.5;
+            
+            for (let i = 1; i <= 5; i++) {
+                if (i <= fullStars) {
+                    stars += '<i class="fas fa-star rating-star"></i>';
+                } else if (i === fullStars + 1 && hasHalfStar) {
+                    stars += '<i class="fas fa-star-half-alt rating-star"></i>';
+                } else {
+                    stars += '<i class="far fa-star rating-star-empty"></i>';
+                }
+            }
+            
+            return stars;
+        }
+        
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.add('hidden');
+            });
+            
+            // Show the requested section
+            document.getElementById(sectionId).classList.remove('hidden');
+            
+            // Update active tab in navigation
+            document.querySelectorAll('nav a').forEach(link => {
+                link.classList.remove('text-blue-600', 'font-semibold');
+                link.classList.add('text-gray-700');
+            });
+            
+            // Highlight the active navigation link
+            const activeLink = document.querySelector(`nav a[onclick="showSection('${sectionId}')"]`);
+            if (activeLink) {
+                activeLink.classList.remove('text-gray-700');
+                activeLink.classList.add('text-blue-600', 'font-semibold');
+            }
+        }
+        
+        function openModal(modalId) {
+            document.getElementById(modalId).style.display = 'block';
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+        
+        function showLoginModal() {
+            closeModal('register-modal');
+            openModal('login-modal');
+        }
+        
+        function showRegisterModal() {
+            closeModal('login-modal');
+            openModal('register-modal');
+        }
+        
+        function showNotification(message, type = 'info') {
+            // Remove any existing notification
+            const existingNotification = document.querySelector('.notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+            
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `notification fixed top-4 right-4 px-6 py-4 rounded-lg shadow-lg z-50 max-w-md transform transition-transform duration-300 translate-y-0`;
+            
+            // Set color based on type
+            if (type === 'success') {
+                notification.classList.add('bg-green-100', 'text-green-800', 'border', 'border-green-200');
+            } else if (type === 'error') {
+                notification.classList.add('bg-red-100', 'text-red-800', 'border', 'border-red-200');
+            } else if (type === 'warning') {
+                notification.classList.add('bg-yellow-100', 'text-yellow-800', 'border', 'border-yellow-200');
+            } else {
+                notification.classList.add('bg-blue-100', 'text-blue-800', 'border', 'border-blue-200');
+            }
+            
+            // Add icon based on type
+            let icon = 'info-circle';
+            if (type === 'success') icon = 'check-circle';
+            if (type === 'error') icon = 'exclamation-circle';
+            if (type === 'warning') icon = 'exclamation-triangle';
+            
+            notification.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas fa-${icon} mr-3"></i>
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.style.transform = 'translateY(-100px)';
+                    setTimeout(() => {
+                        if (notification.parentElement) {
+                            notification.remove();
+                        }
+                    }, 300);
+                }
+            }, 5000);
+        }
+        
+        function changeLeaderboardCity(city) {
+            // Update active tab
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            event.target.classList.add('active');
+            
+            
+            renderLeaderboard(city);
+        }
+        
+        
+        loginBtn.addEventListener('click', showLoginModal);
+        registerBtn.addEventListener('click', showRegisterModal);
+        
+        // Search functionality
+        searchBtn.addEventListener('click', () => {
+            searchStalls(searchInput.value);
+        });
+        
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchStalls(searchInput.value);
+            }
+        });
+        
+        // Range slider updates
+        document.getElementById('water-quality').addEventListener('input', (e) => {
+            document.getElementById('water-quality-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('mask-usage').addEventListener('input', (e) => {
+            document.getElementById('mask-usage-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('glove-usage').addEventListener('input', (e) => {
+            document.getElementById('glove-usage-value').textContent = e.target.value;
+        });
+        
+        document.getElementById('cleanliness').addEventListener('input', (e) => {
+            document.getElementById('cleanliness-value').textContent = e.target.value;
+        });
+        
+        // Close modals when clicking outside
+        window.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
+        });
+        
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            renderFeaturedStalls();
+            renderLeaderboard();
+            
+            
+            showSection('home');
+            
+            
+            const user = auth.currentUser;
+            if (user) {
+                updateUIForUser(user);
+            }
+        });
+    </script>
+</body>
+</html>
